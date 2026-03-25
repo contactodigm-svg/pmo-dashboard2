@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PMO Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:#f5f4f0; --surface:#fff; --surface2:#f0efe9;
+    --border:rgba(0,0,0,0.08); --border2:rgba(0,0,0,0.14);
+    --text:#1a1a18; --text2:#6b6a64; --text3:#9e9d96;
+    --green:#1D9E75; --green-bg:#e1f5ee; --green-text:#0f6e56;
+    --amber:#BA7517; --amber-bg:#faeeda; --amber-text:#854f0b;
+    --red:#E24B4A;   --red-bg:#fcebeb;   --red-text:#a32d2d;
+    --blue:#185FA5;  --blue-bg:#e6f1fb;  --blue-text:#0c447c;
+    --radius:10px; --radius-sm:6px;
+  }
+  body { font-family:'DM Sans',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; font-size:14px; line-height:1.5; }
+  .header { background:var(--surface); border-bottom:1px solid var(--border); padding:0 28px; display:flex; align-items:center; justify-content:space-between; height:56px; position:sticky; top:0; z-index:100; }
+  .logo { font-weight:600; font-size:15px; letter-spacing:-.02em; }
+  .logo span { color:var(--text3); font-weight:400; }
+  .last-update { font-size:12px; color:var(--text3); font-family:'DM Mono',monospace; }
+  .refresh-btn { background:none; border:1px solid var(--border2); border-radius:var(--radius-sm); padding:5px 12px; font-size:12px; color:var(--text2); cursor:pointer; font-family:'DM Sans',sans-serif; transition:all .15s; }
+  .refresh-btn:hover { background:var(--surface2); color:var(--text); }
+  .nav { display:flex; gap:2px; padding:0 28px; background:var(--surface); border-bottom:1px solid var(--border); }
+  .nav-btn { background:none; border:none; padding:10px 16px; font-size:13px; color:var(--text2); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; font-family:'DM Sans',sans-serif; transition:color .15s,border-color .15s; font-weight:500; }
+  .nav-btn.active { color:var(--text); border-bottom-color:var(--text); }
+  .nav-btn:hover:not(.active) { color:var(--text); }
+  .main { padding:24px 28px; max-width:1200px; }
+  .tab { display:none; flex-direction:column; gap:18px; }
+  .tab.active { display:flex; }
+  .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; }
+  .metric { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px; }
+  .metric-label { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+  .metric-value { font-size:28px; font-weight:600; letter-spacing:-.02em; line-height:1; }
+  .metric-sub { font-size:12px; color:var(--text3); margin-top:4px; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px 20px; overflow:hidden; }
+  .card-title { font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:14px; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .badge { display:inline-block; font-size:11px; font-weight:500; padding:2px 8px; border-radius:99px; }
+  .badge-ok   { background:var(--green-bg); color:var(--green-text); }
+  .badge-warn { background:var(--amber-bg); color:var(--amber-text); }
+  .badge-err  { background:var(--red-bg);   color:var(--red-text); }
+  .badge-info { background:var(--blue-bg);  color:var(--blue-text); }
+  .tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  .tbl thead th { font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; text-align:left; padding:4px 10px 10px; white-space:nowrap; }
+  .tbl tbody tr { border-top:1px solid var(--border); transition:background .1s; }
+  .tbl tbody tr:hover { background:var(--surface2); }
+  .tbl tbody td { padding:9px 10px; vertical-align:middle; }
+  .prog-wrap { background:var(--surface2); border-radius:3px; height:5px; width:72px; display:inline-block; vertical-align:middle; }
+  .prog-fill { height:5px; border-radius:3px; }
+  .risk-item { display:flex; align-items:flex-start; gap:10px; padding:9px 0; border-top:1px solid var(--border); }
+  .risk-item:first-child { border-top:none; padding-top:0; }
+  .risk-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:4px; }
+  .risk-name { font-size:13px; font-weight:500; }
+  .risk-meta { font-size:11px; color:var(--text3); margin-top:2px; }
+  .res-row { display:flex; align-items:center; gap:10px; margin-bottom:9px; }
+  .res-name { font-size:12px; color:var(--text2); width:120px; text-align:right; flex-shrink:0; }
+  .res-bar-wrap { flex:1; background:var(--surface2); border-radius:3px; height:12px; overflow:hidden; }
+  .res-bar-fill { height:12px; border-radius:3px; }
+  .res-pct { font-size:11px; width:36px; font-family:'DM Mono',monospace; }
+  .budget-wrap { position:relative; width:100%; height:220px; }
+  .loading-msg { text-align:center; padding:40px 20px; color:var(--text3); font-size:13px; }
+  .banner { border-radius:var(--radius); padding:16px 20px; font-size:13px; line-height:1.8; margin-bottom:18px; }
+  .banner-warn { background:var(--amber-bg); border:1px solid var(--amber); color:var(--amber-text); }
+  .banner-err  { background:var(--red-bg);   border:1px solid var(--red);   color:var(--red-text); }
+  .banner-ok   { background:var(--green-bg); border:1px solid var(--green); color:var(--green-text); }
+  .av { width:26px; height:26px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; background:var(--blue-bg); color:var(--blue-text); flex-shrink:0; }
+  .task-item { display:flex; align-items:center; gap:10px; padding:7px 0; border-top:1px solid var(--border); font-size:13px; }
+  .task-item:first-child { border-top:none; padding-top:0; }
+  .task-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  code { background:rgba(0,0,0,0.06); border-radius:4px; padding:1px 6px; font-family:'DM Mono',monospace; font-size:12px; }
+  @media (max-width:700px) { .metrics { grid-template-columns:repeat(2,1fr); } .two-col { grid-template-columns:1fr; } .main { padding:16px; } .header,.nav { padding:0 16px; } }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">PMO Dashboard <span>/ Gestión de Proyectos</span></div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span class="last-update" id="lastUpdate">—</span>
+    <button class="refresh-btn" onclick="loadAllData()">↻ Actualizar</button>
+  </div>
+</header>
+
+<nav class="nav">
+  <button class="nav-btn active" onclick="showTab('resumen',this)">Resumen</button>
+  <button class="nav-btn" onclick="showTab('proyectos',this)">Proyectos</button>
+  <button class="nav-btn" onclick="showTab('tareas',this)">Tareas</button>
+  <button class="nav-btn" onclick="showTab('riesgos',this)">Riesgos</button>
+  <button class="nav-btn" onclick="showTab('recursos',this)">Recursos</button>
+  <button class="nav-btn" onclick="showTab('presupuesto',this)">Presupuesto</button>
+</nav>
+
+<div class="main">
+  <div id="top-banner"></div>
+
+  <div id="tab-resumen" class="tab active">
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Proyectos activos</div><div class="metric-value" id="m-proyectos">—</div></div>
+      <div class="metric"><div class="metric-label">Tareas completadas</div><div class="metric-value" id="m-tareas">—</div></div>
+      <div class="metric"><div class="metric-label">Presupuesto usado</div><div class="metric-value" id="m-presupuesto">—</div></div>
+      <div class="metric"><div class="metric-label">Riesgos abiertos</div><div class="metric-value" id="m-riesgos">—</div></div>
+    </div>
+    <div class="two-col">
+      <div class="card"><div class="card-title">Estado de proyectos</div><div id="resumen-estados"></div></div>
+      <div class="card"><div class="card-title">Riesgos prioritarios</div><div id="resumen-riesgos"></div></div>
+    </div>
+  </div>
+
+  <div id="tab-proyectos" class="tab">
+    <div class="card"><div class="card-title">Todos los proyectos</div><div id="proyectos-tabla"><div class="loading-msg">Cargando…</div></div></div>
+  </div>
+
+  <div id="tab-tareas" class="tab">
+    <div class="two-col">
+      <div class="card"><div class="card-title">Pendientes / urgentes</div><div id="tareas-pendientes"></div></div>
+      <div class="card"><div class="card-title">Completadas</div><div id="tareas-completadas"></div></div>
+    </div>
+  </div>
+
+  <div id="tab-riesgos" class="tab">
+    <div class="card"><div class="card-title">Registro de riesgos</div><div id="riesgos-tabla"><div class="loading-msg">Cargando…</div></div></div>
+  </div>
+
+  <div id="tab-recursos" class="tab">
+    <div class="card"><div class="card-title">Carga de trabajo por persona</div><div id="recursos-barras"></div></div>
+  </div>
+
+  <div id="tab-presupuesto" class="tab">
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Presupuesto total</div><div class="metric-value" id="b-total">—</div></div>
+      <div class="metric"><div class="metric-label">Ejecutado</div><div class="metric-value" id="b-ejecutado">—</div></div>
+      <div class="metric"><div class="metric-label">Disponible</div><div class="metric-value" id="b-disponible">—</div></div>
+      <div class="metric"><div class="metric-label">% Utilizado</div><div class="metric-value" id="b-pct">—</div></div>
+    </div>
+    <div class="card"><div class="card-title">Presupuesto vs ejecutado</div><div class="budget-wrap"><canvas id="budgetChart"></canvas></div></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+
+// ════════════════════════════════════════════════
+//  PASO 1: Pega aquí tu URL de Google Apps Script
+// ════════════════════════════════════════════════
+var APPS_SCRIPT_URL = 'TU_URL_APPS_SCRIPT_AQUI';
+// ════════════════════════════════════════════════
+
+var DATA = { proyectos:[], tareas:[], riesgos:[], recursos:[] };
+var budgetChart = null;
+
+function fetchSheet(name) {
+  var url = APPS_SCRIPT_URL + '?sheet=' + name + '&t=' + Date.now();
+  return fetch(url)
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(json) {
+      if (json && json.error) throw new Error(json.error);
+      return Array.isArray(json) ? json : [];
+    });
+}
+
+function badgeEstado(e) {
+  if (!e) return '';
+  var el = e.toLowerCase();
+  var cls = el.indexOf('tiempo') >= 0 || el === 'ok' || el === 'verde' ? 'badge-ok'
+          : el.indexOf('riesgo') >= 0 || el === 'amarillo' ? 'badge-warn'
+          : el.indexOf('retraso') >= 0 || el === 'rojo' ? 'badge-err'
+          : 'badge-info';
+  return '<span class="badge ' + cls + '">' + e + '</span>';
+}
+
+function colorEstado(e) {
+  if (!e) return '#9e9d96';
+  var el = e.toLowerCase();
+  return el.indexOf('tiempo') >= 0 || el === 'ok' ? 'var(--green)'
+       : el.indexOf('riesgo') >= 0 ? 'var(--amber)'
+       : el.indexOf('retraso') >= 0 ? 'var(--red)'
+       : 'var(--blue)';
+}
+
+function progBar(pct, color) {
+  var n = Math.min(100, Math.max(0, parseInt(pct) || 0));
+  return '<span class="prog-wrap"><span class="prog-fill" style="width:' + n + '%;background:' + color + '"></span></span> <span style="font-family:\'DM Mono\',monospace;font-size:12px">' + n + '%</span>';
+}
+
+function initials(name) {
+  if (!name) return '?';
+  return name.split(' ').slice(0,2).map(function(w){ return w[0] || ''; }).join('').toUpperCase() || '?';
+}
+
+function fmtMoney(v) {
+  var n = parseFloat(String(v).replace(/[$\s]/g,'').replace(/\./g,'').replace(',','.'));
+  if (isNaN(n) || n === 0) return v || '—';
+  if (n >= 1000000) return '$' + (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return '$' + Math.round(n/1000) + 'k';
+  return '$' + Math.round(n);
+}
+
+function safeNum(v) {
+  return parseFloat(String(v).replace(/[$,\s]/g,'')) || 0;
+}
+
+function renderResumen() {
+  var p = DATA.proyectos, t = DATA.tareas, r = DATA.riesgos;
+  document.getElementById('m-proyectos').textContent = p.length || '—';
+  var done = t.filter(function(x){ return (x.Estado||'').toLowerCase().indexOf('complet') >= 0; }).length;
+  document.getElementById('m-tareas').textContent = t.length ? Math.round(done/t.length*100) + '%' : '—';
+  var tot = p.reduce(function(s,x){ return s + safeNum(x.Presupuesto); }, 0);
+  var ej  = p.reduce(function(s,x){ return s + safeNum(x.Ejecutado); }, 0);
+  document.getElementById('m-presupuesto').textContent = tot ? Math.round(ej/tot*100) + '%' : '—';
+  document.getElementById('m-riesgos').textContent = r.length || '—';
+
+  var counts = {};
+  p.forEach(function(x){ var e = x.Estado || 'Sin estado'; counts[e] = (counts[e]||0) + 1; });
+  document.getElementById('resumen-estados').innerHTML = Object.keys(counts).map(function(e){
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-top:1px solid var(--border)">' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+      '<span style="width:8px;height:8px;border-radius:50%;background:' + colorEstado(e) + ';display:inline-block"></span>' +
+      '<span style="font-size:13px">' + e + '</span></div>' +
+      '<span style="font-size:13px;font-weight:600;font-family:\'DM Mono\',monospace">' + counts[e] + '</span></div>';
+  }).join('') || '<div class="loading-msg">Sin datos</div>';
+
+  document.getElementById('resumen-riesgos').innerHTML = r.slice(0,5).map(function(x){
+    var niv = (x.Nivel || x.Impacto || '').toLowerCase();
+    var col = niv.indexOf('alto') >= 0 ? 'var(--red)' : niv.indexOf('medio') >= 0 ? 'var(--amber)' : 'var(--green)';
+    return '<div class="risk-item"><div class="risk-dot" style="background:' + col + '"></div>' +
+      '<div style="flex:1"><div class="risk-name">' + (x.Riesgo||x.Nombre||'—') + '</div>' +
+      '<div class="risk-meta">' + (x.Proyecto||'') + (x.Vencimiento ? ' · ' + x.Vencimiento : '') + '</div></div>' +
+      badgeEstado(x.Nivel||x.Impacto) + '</div>';
+  }).join('') || '<div class="loading-msg">Sin riesgos</div>';
+}
+
+function renderProyectos() {
+  var p = DATA.proyectos;
+  if (!p.length) { document.getElementById('proyectos-tabla').innerHTML = '<div class="loading-msg">Sin datos</div>'; return; }
+  var keys = Object.keys(p[0]);
+  var want = ['Nombre','Proyecto','Estado','Avance','Presupuesto','Ejecutado','Lead','Responsable','Cierre','Fecha cierre'];
+  var show = want.filter(function(c){ return keys.indexOf(c) >= 0; });
+  document.getElementById('proyectos-tabla').innerHTML =
+    '<table class="tbl"><thead><tr>' + show.map(function(c){ return '<th>' + c + '</th>'; }).join('') + '</tr></thead><tbody>' +
+    p.map(function(row){
+      return '<tr>' + show.map(function(c){
+        var v = row[c] || '';
+        if (c === 'Estado') return '<td>' + badgeEstado(v) + '</td>';
+        if (c === 'Avance') return '<td>' + progBar(v, colorEstado(row.Estado)) + '</td>';
+        if (c === 'Presupuesto' || c === 'Ejecutado') return '<td style="font-family:\'DM Mono\',monospace;font-size:12px">' + fmtMoney(v) + '</td>';
+        if (c === 'Lead' || c === 'Responsable') return '<td><span class="av">' + initials(v) + '</span> <span style="font-size:12px;margin-left:4px">' + v + '</span></td>';
+        return '<td>' + v + '</td>';
+      }).join('') + '</tr>';
+    }).join('') + '</tbody></table>';
+}
+
+function renderTareas() {
+  var t = DATA.tareas;
+  var pend = t.filter(function(x){ return (x.Estado||'').toLowerCase().indexOf('complet') < 0; });
+  var done = t.filter(function(x){ return (x.Estado||'').toLowerCase().indexOf('complet') >= 0; });
+  function mk(x, d) {
+    return '<div class="task-item">' +
+      '<div class="task-dot" style="background:' + (d ? 'var(--green)' : 'var(--amber)') + '"></div>' +
+      '<div style="flex:1;' + (d ? 'opacity:.55;text-decoration:line-through' : '') + '">' + (x.Tarea||x.Nombre||'—') + '</div>' +
+      '<span style="font-size:11px;color:var(--text3);font-family:\'DM Mono\',monospace">' + (x.Vencimiento||x.Fecha||'') + '</span></div>';
+  }
+  document.getElementById('tareas-pendientes').innerHTML = pend.slice(0,10).map(function(x){ return mk(x,false); }).join('') || '<div class="loading-msg">Sin tareas pendientes</div>';
+  document.getElementById('tareas-completadas').innerHTML = done.slice(0,10).map(function(x){ return mk(x,true); }).join('') || '<div class="loading-msg">Sin tareas completadas</div>';
+}
+
+function renderRiesgos() {
+  var r = DATA.riesgos;
+  if (!r.length) { document.getElementById('riesgos-tabla').innerHTML = '<div class="loading-msg">Sin datos</div>'; return; }
+  var keys = Object.keys(r[0]);
+  var want = ['Riesgo','Nombre','Proyecto','Probabilidad','Impacto','Nivel','Dueño','Responsable','Vencimiento'];
+  var show = want.filter(function(c){ return keys.indexOf(c) >= 0; });
+  document.getElementById('riesgos-tabla').innerHTML =
+    '<table class="tbl"><thead><tr>' + show.map(function(c){ return '<th>' + c + '</th>'; }).join('') + '</tr></thead><tbody>' +
+    r.map(function(row){
+      return '<tr>' + show.map(function(c){
+        var v = row[c] || '';
+        if (c === 'Nivel' || c === 'Impacto') return '<td>' + badgeEstado(v) + '</td>';
+        return '<td>' + v + '</td>';
+      }).join('') + '</tr>';
+    }).join('') + '</tbody></table>';
+}
+
+function renderRecursos() {
+  document.getElementById('recursos-barras').innerHTML = DATA.recursos.map(function(x){
+    var pct = Math.min(130, Math.max(0, parseInt(x.Carga || x['Carga%'] || x.Porcentaje || 0)));
+    var col = pct >= 100 ? 'var(--red)' : pct >= 80 ? 'var(--amber)' : 'var(--green)';
+    return '<div class="res-row">' +
+      '<div class="res-name">' + (x.Nombre||x.Recurso||'—') + '</div>' +
+      '<div class="res-bar-wrap"><div class="res-bar-fill" style="width:' + Math.min(100,pct) + '%;background:' + col + '"></div></div>' +
+      '<div class="res-pct" style="color:' + col + '">' + pct + '%</div></div>';
+  }).join('') || '<div class="loading-msg">Sin datos</div>';
+}
+
+function renderPresupuesto() {
+  var p = DATA.proyectos.filter(function(x){ return x.Presupuesto || x.Ejecutado; });
+  var tot = p.reduce(function(s,x){ return s + safeNum(x.Presupuesto); }, 0);
+  var ej  = p.reduce(function(s,x){ return s + safeNum(x.Ejecutado); }, 0);
+  document.getElementById('b-total').textContent     = fmtMoney(tot);
+  document.getElementById('b-ejecutado').textContent = fmtMoney(ej);
+  document.getElementById('b-disponible').textContent= fmtMoney(tot - ej);
+  document.getElementById('b-pct').textContent       = tot ? Math.round(ej/tot*100) + '%' : '—';
+  if (budgetChart) { budgetChart.destroy(); budgetChart = null; }
+  var ctx = document.getElementById('budgetChart');
+  if (ctx && p.length && typeof Chart !== 'undefined') {
+    budgetChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: p.map(function(x){ return x.Nombre || x.Proyecto || '?'; }),
+        datasets: [
+          { label:'Presupuesto', data: p.map(function(x){ return safeNum(x.Presupuesto); }), backgroundColor:'#D3D1C7' },
+          { label:'Ejecutado',   data: p.map(function(x){ return safeNum(x.Ejecutado); }),   backgroundColor:'#1D9E75' }
+        ]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false } },
+        scales:{
+          x:{ ticks:{ font:{ size:11 }, maxRotation:30 } },
+          y:{ ticks:{ callback: function(v){ return fmtMoney(v); }, font:{ size:11 } } }
+        }
+      }
+    });
+  }
+}
+
+function renderAll() {
+  renderResumen(); renderProyectos(); renderTareas();
+  renderRiesgos(); renderRecursos(); renderPresupuesto();
+  document.getElementById('lastUpdate').textContent = 'Actualizado: ' + new Date().toLocaleTimeString('es-CL');
+}
+
+function cargarDemoYMostrarInstrucciones() {
+  DATA.proyectos = [
+    {Nombre:'Migración Core', Estado:'En riesgo', Avance:'58',Presupuesto:'180000',Ejecutado:'120000',Lead:'Juan López',Cierre:'15/05/2025'},
+    {Nombre:'Portal Cliente', Estado:'Retrasado',  Avance:'42',Presupuesto:'100000',Ejecutado:'95000', Lead:'María Rodríguez',Cierre:'30/04/2025'},
+    {Nombre:'BI Analytics',   Estado:'En tiempo',  Avance:'75',Presupuesto:'90000', Ejecutado:'60000', Lead:'Carlos Pizarro',Cierre:'20/04/2025'},
+    {Nombre:'App Móvil',      Estado:'En tiempo',  Avance:'30',Presupuesto:'150000',Ejecutado:'35000', Lead:'Ana Araya',Cierre:'30/06/2025'},
+    {Nombre:'Infra Cloud',    Estado:'En riesgo',  Avance:'61',Presupuesto:'250000',Ejecutado:'200000',Lead:'Felipe Soto',Cierre:'10/06/2025'}
+  ];
+  DATA.tareas = [
+    {Tarea:'Revisión arquitectura',Estado:'Pendiente',Vencimiento:'Hoy'},
+    {Tarea:'Aprobación presupuesto Q2',Estado:'Pendiente',Vencimiento:'Vencida'},
+    {Tarea:'Setup App Móvil',Estado:'Completado',Vencimiento:'22 Mar'},
+    {Tarea:'Certificación ISO audit',Estado:'Completado',Vencimiento:'21 Mar'}
+  ];
+  DATA.riesgos = [
+    {Riesgo:'Dependencia proveedor externo',Proyecto:'Migración Core',Nivel:'Alto',Vencimiento:'15 Abr'},
+    {Riesgo:'Falta de recursos QA',Proyecto:'Portal Cliente',Nivel:'Alto',Vencimiento:'30 Mar'},
+    {Riesgo:'Alcance no definido',Proyecto:'BI Analytics',Nivel:'Medio',Vencimiento:'5 May'}
+  ];
+  DATA.recursos = [
+    {Nombre:'Juan López',Carga:'110'},{Nombre:'María Rodríguez',Carga:'100'},
+    {Nombre:'Felipe Soto',Carga:'90'},{Nombre:'Carlos Pizarro',Carga:'85'},
+    {Nombre:'Ana Araya',Carga:'75'},{Nombre:'Luis Fuentes',Carga:'60'}
+  ];
+  document.getElementById('top-banner').innerHTML =
+    '<div class="banner banner-warn">' +
+    '<strong>Modo demo</strong> — Para conectar tu Google Sheet real sigue estos pasos:<br>' +
+    '1. En Google Sheets ve a <strong>Extensiones &rarr; Apps Script</strong><br>' +
+    '2. Reemplaza todo el codigo con el script entregado en el archivo <code>apps_script.gs</code><br>' +
+    '3. Clic en <strong>Implementar &rarr; Nueva implementacion</strong> &rarr; Tipo: Aplicacion web<br>' +
+    '4. Ejecutar como: <strong>Yo</strong> &nbsp;|&nbsp; Quien tiene acceso: <strong>Cualquier persona</strong> &larr; IMPORTANTE<br>' +
+    '5. Autoriza los permisos y copia la URL que aparece<br>' +
+    '6. Abre este HTML en Bloc de Notas, busca <code>TU_URL_APPS_SCRIPT_AQUI</code> y pega tu URL<br>' +
+    '7. Guarda y recarga el navegador' +
+    '</div>';
+  renderAll();
+}
+
+function loadAllData() {
+  if (APPS_SCRIPT_URL === 'TU_URL_APPS_SCRIPT_AQUI') {
+    cargarDemoYMostrarInstrucciones();
+    return;
+  }
+  document.getElementById('top-banner').innerHTML = '';
+  document.getElementById('lastUpdate').textContent = 'Cargando…';
+
+  Promise.all([
+    fetchSheet('proyectos'),
+    fetchSheet('tareas'),
+    fetchSheet('riesgos'),
+    fetchSheet('recursos')
+  ]).then(function(results) {
+    DATA.proyectos = results[0];
+    DATA.tareas    = results[1];
+    DATA.riesgos   = results[2];
+    DATA.recursos  = results[3];
+    var ok = '<div class="banner banner-ok" style="margin-bottom:18px">Datos cargados correctamente desde Google Sheets.</div>';
+    document.getElementById('top-banner').innerHTML = ok;
+    setTimeout(function(){ document.getElementById('top-banner').innerHTML = ''; }, 3000);
+    renderAll();
+  }).catch(function(e) {
+    document.getElementById('top-banner').innerHTML =
+      '<div class="banner banner-err"><strong>Error al conectar:</strong> ' + e.message + '<br>' +
+      'Verifica que en Apps Script el acceso sea <strong>"Cualquier persona"</strong> y que hayas copiado bien la URL.</div>';
+    document.getElementById('lastUpdate').textContent = 'Error';
+  });
+}
+
+function showTab(id, btn) {
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
+  document.getElementById('tab-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+}
+
+loadAllData();
+</script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PMO Dashboard — Diagnóstico</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #f5f4f0; color: #1a1a18; padding: 24px; font-size: 14px; }
+  h1 { font-size: 18px; font-weight: 600; margin-bottom: 20px; }
+  .card { background: #fff; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  .card-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: #9e9d96; margin-bottom: 14px; }
+  input[type=text] { width: 100%; border: 1px solid #d0d7de; border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: monospace; margin-bottom: 10px; }
+  button { background: #1a1a18; color: #fff; border: none; border-radius: 6px; padding: 8px 18px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button:hover { background: #333; }
+  .result { margin-top: 14px; border-radius: 8px; padding: 14px 16px; font-size: 13px; line-height: 1.7; display: none; }
+  .result.ok   { background: #e1f5ee; border: 1px solid #1D9E75; color: #0f6e56; }
+  .result.err  { background: #fcebeb; border: 1px solid #E24B4A; color: #a32d2d; }
+  .result.warn { background: #faeeda; border: 1px solid #BA7517; color: #854f0b; }
+  .result strong { font-weight: 700; }
+  .result code { background: rgba(0,0,0,0.07); border-radius: 4px; padding: 1px 6px; font-family: monospace; font-size: 12px; }
+  .sheet-tests { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+  .sheet-row { display: flex; align-items: center; gap: 10px; }
+  .sheet-label { font-size: 13px; width: 100px; color: #6b6a64; }
+  .sheet-status { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 99px; }
+  .s-pending { background: #f0efe9; color: #9e9d96; }
+  .s-ok      { background: #e1f5ee; color: #0f6e56; }
+  .s-err     { background: #fcebeb; color: #a32d2d; }
+  .s-loading { background: #e6f1fb; color: #0c447c; }
+  .data-preview { font-family: monospace; font-size: 11px; background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px; padding: 10px; margin-top: 8px; max-height: 120px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+  .step-list { list-style: none; padding: 0; }
+  .step-list li { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(0,0,0,0.06); font-size: 13px; line-height: 1.5; }
+  .step-list li:first-child { border-top: none; }
+  .step-num { width: 22px; height: 22px; border-radius: 50%; background: #1a1a18; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+</style>
+</head>
+<body>
+
+<h1>PMO Dashboard — Herramienta de diagnóstico</h1>
+
+<div class="card">
+  <div class="card-title">Paso 1 — Pega tu URL de Apps Script</div>
+  <input type="text" id="urlInput" placeholder="https://script.google.com/macros/s/XXXX/exec" />
+  <button onclick="runTests()">Probar conexión</button>
+  <div id="url-result" class="result"></div>
+</div>
+
+<div class="card" id="sheet-card" style="display:none">
+  <div class="card-title">Paso 2 — Estado de cada pestaña</div>
+  <div class="sheet-tests">
+    <div class="sheet-row"><div class="sheet-label">proyectos</div><div class="sheet-status s-pending" id="s-proyectos">Pendiente</div><div id="c-proyectos" style="font-size:12px;color:#6b6a64"></div></div>
+    <div class="sheet-row"><div class="sheet-label">tareas</div><div class="sheet-status s-pending" id="s-tareas">Pendiente</div><div id="c-tareas" style="font-size:12px;color:#6b6a64"></div></div>
+    <div class="sheet-row"><div class="sheet-label">riesgos</div><div class="sheet-status s-pending" id="s-riesgos">Pendiente</div><div id="c-riesgos" style="font-size:12px;color:#6b6a64"></div></div>
+    <div class="sheet-row"><div class="sheet-label">recursos</div><div class="sheet-status s-pending" id="s-recursos">Pendiente</div><div id="c-recursos" style="font-size:12px;color:#6b6a64"></div></div>
+  </div>
+  <div id="preview-box"></div>
+</div>
+
+<div class="card" id="fix-card" style="display:none">
+  <div class="card-title">Cómo solucionar el error encontrado</div>
+  <div id="fix-content"></div>
+</div>
+
+<script>
+var SHEETS = ['proyectos','tareas','riesgos','recursos'];
+var errors = [];
+
+function setStatus(id, cls, text) {
+  var el = document.getElementById('s-' + id);
+  el.className = 'sheet-status ' + cls;
+  el.textContent = text;
+}
+
+function setCount(id, text) {
+  document.getElementById('c-' + id).textContent = text;
+}
+
+function showResult(id, cls, html) {
+  var el = document.getElementById(id);
+  el.className = 'result ' + cls;
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+function runTests() {
+  errors = [];
+  var url = document.getElementById('urlInput').value.trim();
+
+  if (!url) {
+    showResult('url-result', 'err', '<strong>Falta la URL.</strong> Pega la URL de tu Apps Script en el campo de arriba.');
+    return;
+  }
+  if (!url.startsWith('https://script.google.com')) {
+    showResult('url-result', 'err', '<strong>URL inválida.</strong> Debe comenzar con <code>https://script.google.com/macros/s/</code><br>La URL que pegaste: <code>' + url + '</code>');
+    return;
+  }
+  if (!url.endsWith('/exec')) {
+    showResult('url-result', 'warn', '<strong>La URL podría estar incompleta.</strong> Normalmente termina en <code>/exec</code><br>Verifica que copiaste la URL completa al implementar el script.');
+    return;
+  }
+
+  showResult('url-result', 'ok', 'URL válida. Probando conexión con cada pestaña…');
+  document.getElementById('sheet-card').style.display = 'block';
+  document.getElementById('fix-card').style.display = 'none';
+  SHEETS.forEach(function(s){ setStatus(s,'s-loading','Probando…'); setCount(s,''); });
+
+  var allDone = 0;
+
+  SHEETS.forEach(function(sheet) {
+    var testUrl = url + '?sheet=' + sheet + '&t=' + Date.now();
+    fetch(testUrl)
+      .then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' — el servidor rechazó la petición');
+        return r.text();
+      })
+      .then(function(text) {
+        var json;
+        try { json = JSON.parse(text); } catch(e) {
+          throw new Error('La respuesta no es JSON válido. Respuesta recibida: ' + text.substring(0,80));
+        }
+        if (json && json.error) throw new Error('El script devolvió error: ' + json.error);
+        if (!Array.isArray(json)) throw new Error('Se esperaba un array, se recibió: ' + typeof json);
+        var count = json.length;
+        setStatus(sheet, 's-ok', 'OK — ' + count + ' filas');
+        setCount(sheet, count === 0 ? '(sin datos aún)' : '');
+        if (count > 0) {
+          var pre = document.getElementById('preview-box');
+          if (!pre.innerHTML) {
+            pre.innerHTML = '<div style="font-size:12px;color:#6b6a64;margin-top:12px;margin-bottom:4px">Vista previa — primera fila de <strong>' + sheet + '</strong>:</div>' +
+              '<div class="data-preview">' + JSON.stringify(json[0], null, 2) + '</div>';
+          }
+        }
+      })
+      .catch(function(e) {
+        setStatus(sheet, 's-err', 'Error');
+        setCount(sheet, e.message);
+        errors.push({ sheet: sheet, msg: e.message });
+      })
+      .finally(function() {
+        allDone++;
+        if (allDone === SHEETS.length) showFix();
+      });
+  });
+}
+
+function showFix() {
+  var fixCard = document.getElementById('fix-card');
+  var fixContent = document.getElementById('fix-content');
+  fixCard.style.display = 'block';
+
+  if (errors.length === 0) {
+    fixContent.innerHTML =
+      '<div class="result ok" style="display:block"><strong>Todo funciona correctamente.</strong><br>' +
+      'Tu Apps Script está bien configurado. Ahora sube el archivo <code>index.html</code> del dashboard a GitHub, ' +
+      'edita la línea <code>var APPS_SCRIPT_URL = \'TU_URL_APPS_SCRIPT_AQUI\'</code> con esta URL y recarga.</div>';
+    return;
+  }
+
+  var msg = errors[0].msg;
+  var html = '';
+
+  if (msg.indexOf('Failed to fetch') >= 0 || msg.indexOf('NetworkError') >= 0 || msg.indexOf('CORS') >= 0) {
+    html = '<ul class="step-list">' +
+      '<li><div class="step-num">1</div><div>En Google Sheets ve a <strong>Extensiones → Apps Script</strong></div></li>' +
+      '<li><div class="step-num">2</div><div>Haz clic en <strong>Implementar → Administrar implementaciones</strong></div></li>' +
+      '<li><div class="step-num">3</div><div>Haz clic en el ícono del lápiz (editar) en tu implementación activa</div></li>' +
+      '<li><div class="step-num">4</div><div>En <strong>"Quién tiene acceso"</strong> selecciona <strong>Cualquier persona</strong> (no "Cualquier persona con cuenta Google")</div></li>' +
+      '<li><div class="step-num">5</div><div>Clic en <strong>Implementar</strong> → copia la nueva URL → úsala aquí para probar de nuevo</div></li>' +
+      '</ul><div style="margin-top:10px;font-size:12px;color:#854f0b;background:#faeeda;border-radius:6px;padding:10px">Si el error persiste desde un archivo local (file://), abre esta herramienta desde GitHub Pages, no desde tu PC.</div>';
+  } else if (msg.indexOf('HTTP 401') >= 0 || msg.indexOf('HTTP 403') >= 0) {
+    html = '<ul class="step-list">' +
+      '<li><div class="step-num">1</div><div>El script está bloqueado por permisos. Ve a <strong>Implementar → Nueva implementación</strong></div></li>' +
+      '<li><div class="step-num">2</div><div>Tipo: <strong>Aplicación web</strong> · Ejecutar como: <strong>Yo</strong> · Acceso: <strong>Cualquier persona</strong></div></li>' +
+      '<li><div class="step-num">3</div><div>Implementa, autoriza todos los permisos que pida Google y copia la nueva URL</div></li>' +
+      '</ul>';
+  } else if (msg.indexOf('no es JSON') >= 0 || msg.indexOf('JSON') >= 0) {
+    html = '<ul class="step-list">' +
+      '<li><div class="step-num">1</div><div>El script existe pero devuelve HTML en vez de JSON. Probablemente hay un <strong>error en el código</strong> del Apps Script.</div></li>' +
+      '<li><div class="step-num">2</div><div>Ve a Apps Script y abre el archivo del script. Verifica que el código sea exactamente el del archivo <code>apps_script.gs</code> entregado.</div></li>' +
+      '<li><div class="step-num">3</div><div>Clic en <strong>Ejecutar → doGet</strong> y revisa si aparece algún error en el panel inferior.</div></li>' +
+      '</ul>';
+  } else if (msg.indexOf('Pestana no encontrada') >= 0) {
+    html = '<ul class="step-list">' +
+      '<li><div class="step-num">1</div><div>El script funciona pero no encuentra la pestaña. Verifica que en tu Google Sheet las pestañas se llamen exactamente: <strong>proyectos</strong>, <strong>tareas</strong>, <strong>riesgos</strong>, <strong>recursos</strong> (minúsculas, sin tildes).</div></li>' +
+      '<li><div class="step-num">2</div><div>Para renombrar: doble clic en la pestaña de Google Sheets y escribe el nombre exacto.</div></li>' +
+      '</ul>';
+  } else {
+    html = '<div style="font-size:13px;line-height:1.7">Error detectado: <code>' + msg + '</code><br><br>' +
+      'Copia este mensaje y compártelo para recibir ayuda específica.</div>';
+  }
+
+  fixContent.innerHTML = '<div class="result err" style="display:block;margin-bottom:12px"><strong>Error encontrado:</strong> ' + errors[0].msg + '</div>' + html;
+}
+</script>
+</body>
+</html>
